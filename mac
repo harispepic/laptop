@@ -8,7 +8,7 @@ fancy_echo() {
   local fmt="$1"; shift
 
   # shellcheck disable=SC2059
-  printf "\n$fmt\n" "$@"
+  printf "\\n$fmt\\n" "$@"
 }
 
 append_to_zshrc() {
@@ -23,9 +23,9 @@ append_to_zshrc() {
 
   if ! grep -Fqs "$text" "$zshrc"; then
     if [ "$skip_new_line" -eq 1 ]; then
-      printf "%s\n" "$text" >> "$zshrc"
+      printf "%s\\n" "$text" >> "$zshrc"
     else
-      printf "\n%s\n" "$text" >> "$zshrc"
+      printf "\\n%s\\n" "$text" >> "$zshrc"
     fi
   fi
 }
@@ -58,11 +58,26 @@ else
   sudo chown -R "$LOGNAME:admin" "$HOMEBREW_PREFIX"
 fi
 
+update_shell() {
+  local shell_path;
+  shell_path="$(command -v zsh)"
+
+  fancy_echo "Changing your shell to zsh ..."
+  if ! grep "$shell_path" /etc/shells > /dev/null 2>&1 ; then
+    fancy_echo "Adding '$shell_path' to /etc/shells"
+    sudo sh -c "echo $shell_path >> /etc/shells"
+  fi
+  sudo chsh -s "$shell_path" "$USER"
+}
+
 case "$SHELL" in
-  */zsh) : ;;
+  */zsh)
+    if [ "$(command -v zsh)" != '/usr/local/bin/zsh' ] ; then
+      update_shell
+    fi
+    ;;
   *)
-    fancy_echo "Changing your shell to zsh ..."
-      chsh -s "$(which zsh)"
+    update_shell
     ;;
 esac
 
@@ -71,7 +86,6 @@ gem_install_or_update() {
     gem update "$@"
   else
     gem install "$@"
-    rbenv rehash
   fi
 }
 
@@ -94,24 +108,27 @@ if brew list | grep -Fq brew-cask; then
 fi
 
 fancy_echo "Updating Homebrew formulae ..."
-brew update
+brew update --force # https://github.com/Homebrew/brew/issues/1151
 brew bundle --file=- <<EOF
 tap "thoughtbot/formulae"
 tap "homebrew/services"
+tap "universal-ctags/universal-ctags"
+tap "caskroom/cask"
 
 # Unix
-brew "ctags"
+brew "universal-ctags", args: ["HEAD"]
 brew "git"
 brew "openssl"
 brew "rcm"
-# brew "reattach-to-user-namespace"
+brew "reattach-to-user-namespace"
 brew "the_silver_searcher"
-# brew "tmux"
-# brew "vim"
+brew "tmux"
+brew "vim"
+brew "watchman"
 brew "zsh"
 
 # Heroku
-# brew "heroku-toolbelt"
+# brew "heroku"
 # brew "parity"
 
 # GitHub
@@ -121,39 +138,17 @@ brew "hub"
 brew "imagemagick"
 
 # Testing
-# brew "qt"
+# brew "qt@5.5" if MacOS::Xcode.installed?
 
-# Programming languages
+# Programming language prerequisites and package managers
 brew "libyaml" # should come after openssl
-# brew "node"
-# brew "rbenv"
-# brew "ruby-build"
+brew "coreutils"
+brew "yarn"
+cask "gpg-suite"
 
-# Databases
-# brew "postgres", restart_service: true
-# brew "redis", restart_service: true
+# MAS Installer
+brew "mas"
 EOF
-
-# fancy_echo "Configuring Ruby ..."
-# find_latest_ruby() {
-#   rbenv install -l | grep -v - | tail -1 | sed -e 's/^ *//'
-# }
-
-# ruby_version="$(find_latest_ruby)"
-# # shellcheck disable=SC2016
-# append_to_zshrc 'eval "$(rbenv init - --no-rehash)"' 1
-# eval "$(rbenv init -)"
-
-# if ! rbenv versions | grep -Fq "$ruby_version"; then
-#   RUBY_CONFIGURE_OPTS=--with-openssl-dir=/usr/local/opt/openssl rbenv install -s "$ruby_version"
-# fi
-# 
-# rbenv global "$ruby_version"
-# rbenv shell "$ruby_version"
-# gem update --system
-# gem_install_or_update 'bundler'
-# number_of_cores=$(sysctl -n hw.ncpu)
-# bundle config --global jobs $((number_of_cores - 1))
 
 if [ -f "$HOME/.laptop.local" ]; then
   fancy_echo "Running your customizations from ~/.laptop.local ..."
